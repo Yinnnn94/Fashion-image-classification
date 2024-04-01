@@ -1,13 +1,16 @@
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
-import matplotlib.image as img
-from PIL import Image 
-import numpy as np
 import pickle
-# import tensorflow as tf
+from sklearn.model_selection import train_test_split
+import time
+import tensorflow as tf
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Flatten
+from keras.layers import Conv2D, MaxPooling2D
+import numpy as np
 
-
+start_time = time.time()
 data = pd.read_csv(r'C:\Users\user\Downloads\myntradataset\styles.csv', on_bad_lines = 'skip', usecols = ['id', 'gender', 'masterCategory', 'baseColour', 'season', 'usage'])
 data = data.dropna()
 
@@ -44,15 +47,11 @@ def move_files(path, data): # 將照片依照不同的條件分類並放入至�
                 else:
                    print(f'{id_}不存在')
 
-
 root = r'C:\Users\user\Downloads\images'
 
 image_path = r"C:\Users\user\Downloads\myntradataset\images"
 
 
-
-# move_files(path, data)
-# sep_files(path, data)
 def save_array_to_pickle(filter_col, array):
     with open(f"{filter_col}.pkl", 'wb') as f:
         pickle.dump(array, f)
@@ -60,67 +59,70 @@ def save_array_to_pickle(filter_col, array):
 # 將各別照片轉成array，且不先存至pickle中
 def img_to_array(path, filter_col, data):
     img_array = []
-    img_label = []
+    img_label_counts = []
     filter_data = data[['id', filter_col]]
     filter_name = filter_data[filter_col].unique()
     filter_label = {name: i for i, name in enumerate(filter_name)}
     for i, key in enumerate(filter_label):
         print(i, key)
-        for file in (filter_data[filter_data[filter_col] == key]['id'][:3]):
+        for file in (filter_data[filter_data[filter_col] == key]['id'][:50]):
             if str(file) + '.jpg' not in os.listdir(path):
                 print(f'{file}不存在')
             else:
-                # print(file)
                 jpg_path = f'{path}\{str(file)}.jpg'
                 images = plt.imread(jpg_path)
-                img_array.append(images)
-                    # pickle.dump(image, f)
-                    # # img_label.append(i)
+                img_array.append(images.astype('float32')/255)
+                img_label_counts.append(i)
+
+    return img_array, img_label_counts , filter_label
+
+gender_array, gender_label_counts, gender_label = img_to_array(image_path, 'gender', data)
 
 
+##### 必須將list裡的資料轉乘numpy!!!!!!!!!!!!!!!!!!
 
+# 將label的資料計數
+def label_count_plot(label):
+    value = list(set(label))
+    value_counts = [label.count(v) for v in value]
+    print(value_counts)
+    plt.bar(value, value_counts)
+    plt.show()
 
-        # print(img_array, len(img_array), img_label, len(img_label))
-        # return img_array, img_label 
-# gender_array, gender_label = img_to_array(image_path, 'gender', data)
-img_to_array(image_path, 'gender', data)
+# label_count_plot(gender_label_counts)
 
-# print(gender_array, gender_label, len(gender_array), len(gender_label))
-# gender_class = ['Boys', 'Girls', 'Men', 'Unisex', 'Women']
-# gender_label = {name: i for i, name in enumerate(gender_class)} # 產生出各個class的label (Dictionary)
+# 繪製圖片
+def plot_img(array):
+    for i in array:
+        plt.imshow(i)
+        plt.show()
 
-# for g in gender_class:
-#     img_array = []
-#     with open(f'{path}\gender\{g}.txt', 'r') as file: # 讀取檔案
-#         files = file.readlines()
-#         for f in files:
-#             image = img.imread(f[:-1])
-#             img_array.append(image)
-#     print(g, len(img_array))
+x_train, x_test, y_train, y_test = train_test_split(gender_array, gender_label_counts)
 
-# img_to_array(r'C:\Users\user\OneDrive\文件\Python Scripts\Fashion_Classification\images\gender\Boys.txt')
-# def plot(path):
-#     fig, axs = plt.subplots(1, 5)
-#     with open(path, 'r') as file:
-#         files = file.readlines()
-#     for i, ax in zip(files[:5], axs.flat):
-#         image = img.imread(i[:-1])
-#         ax.imshow(image, cmap = 'gray')
-#     plt.show()
+print(x_train[0], x_train[0].shape, len(x_train))
+model = Sequential()
+model.add(Conv2D(32, kernel_size = (3, 3),
+                 activation='relu',
+                 input_shape = (80, 60, 3)))
+model.add(Conv2D(64, (3, 3), activation='relu'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+model.add(Dropout(0.25))
+model.add(Dense(128, activation='relu'))
+model.add(Dropout(0.5))
+model.add(Dense(5, activation='softmax'))
+model.summary()
+model.compile(optimizer ='adam', loss ='categorical_crossentropy', metrics = ['accuracy'])
+history = model.fit(x_train, y_train, epochs = 10, batch_size = 10)
+# print(history.history['accuracy'].shape)
 
-# def CNN_model(train_data, test_data, epochs = 10):
-#     model = tf.keras.models.Sequential([
-#         tf.keras.layers.Conv2D(16, (3, 3), activation='relu', input_shape=(150, 150, 3)),
-#         tf.keras.layers.MaxPooling2D(2, 2),
-#         tf.keras.layers.Conv2D(32, (3, 3), activation='relu'),
-#         tf.keras.layers.MaxPooling2D(2, 2),
-#         tf.keras.layers.Conv2D(64, (3, 3), activation='relu'),
-#         tf.keras.layers.MaxPooling2D(2, 2),
-#         tf.keras.layers.Flatten(),
-#         tf.keras.layers.Dense(512, activation='relu'),
-#         tf.keras.layers.Dense(1, activation='sigmoid')])
-#     model.compile(optimizer ='adam', loss ='crossentropy', metrics = ['accuracy'])
-#     history = model.fit(train_data, test_data, epochs = epochs)
-#     return model, history
+score = model.evaluate(x_test, y_test)
+print('Test loss:', score[0]) 
+print('Test accuracy:', score[1])
 
+# plt.plot(history.history['accuracy'], label='accuracy')
+# plt.xlabel('Epoch')
+# plt.ylabel('Accuracy')
+# plt.show()
 
+end_time = time.time()
+print(f'程式運行時間{round(end_time - start_time, 2)}秒')
